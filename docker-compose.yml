@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: urlshortener-postgres
+    environment:
+      POSTGRES_DB: urlshortener        # the database Postgres creates on first boot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres      # fine for local dev only — never do this in prod
+    ports:
+      - "5432:5432"                    # maps container port -> your machine's port
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # persists data across `docker compose down`/`up`
+
+volumes:
+  pgdata:
+  
