@@ -19,11 +19,11 @@ public class Demo2Application {
     // Spring calls run() exactly once, right after the whole application context loads --
     // and it injects UrlRepository via the method parameter, the same constructor-style
     // DI idea from Checkpoint 1, just applied to a @Bean method instead of a class constructor.
-    @Bean
-    CommandLineRunner testInsert(UrlRepository urlRepository) {
-        return args -> {
-            Url saved = urlRepository.save(new Url("test123", "https://www.anthropic.com"));
-            System.out.println("Saved URL with generated ID: " + saved.getId());
-        };
-    }
+//    @Bean
+//    CommandLineRunner testInsert(UrlRepository urlRepository) {
+//        return args -> {
+//            Url saved = urlRepository.save(new Url("test123", "https://www.anthropic.com"));
+//            System.out.println("Saved URL with generated ID: " + saved.getId());
+//        };
+//    }
 }
