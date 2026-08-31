@@ -3,6 +3,7 @@ package com.example.demo.service;
 import com.example.demo.exception.UrlNotFoundException;
 import com.example.demo.model.Url;
 import com.example.demo.repository.UrlRepository;
+import com.example.demo.util.Base62Encoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,7 +28,7 @@ public class UrlService {
         Url url = new Url("PENDING", originalUrl);
         Url saved = urlRepository.save(url);              // INSERT -- id generated here
 
-        saved.setShortCode(String.valueOf(saved.getId()));
+        saved.setShortCode(Base62Encoder.encode(saved.getId()));  // <-- was String.valueOf(saved.getId())
         return urlRepository.save(saved);                  // UPDATE -- short_code now set
     }
 
