@@ -10,7 +10,13 @@ services:
       - "5432:5432"                    # maps container port -> your machine's port
     volumes:
       - pgdata:/var/lib/postgresql/data   # persists data across `docker compose down`/`up`
-
+  valkey:
+    image: valkey/valkey:8
+    container_name: urlshortener-valkey
+    ports:
+      - "6379:6379"
+    # deliberately no volume -- a cache is allowed to be empty on restart,
+    # that's the whole resilience story from Phase 2, not an oversight
 volumes:
   pgdata:
   

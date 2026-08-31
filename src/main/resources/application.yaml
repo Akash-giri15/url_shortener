@@ -16,8 +16,13 @@ spring:
     properties:
       hibernate:
         format_sql: true
-  app:
-    base-url: http://localhost:8080   # configurable now so it's not a hardcoded literal in Java
-
+  data:
+    redis:
+      host: localhost
+      port: 6379
+app:
+  base-url: http://localhost:8080   # configurable now so it's not a hardcoded literal in Java
+  cache:
+    ttl-seconds: 3600
 
 

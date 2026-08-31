@@ -1,39 +1,67 @@
+
+
 package com.example.demo.service;
 
 import com.example.demo.exception.UrlNotFoundException;
 import com.example.demo.model.Url;
 import com.example.demo.repository.UrlRepository;
 import com.example.demo.util.Base62Encoder;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class UrlService {
 
+    private static final String CACHE_KEY_PREFIX = "url:";
+
     private final UrlRepository urlRepository;
+    private final StringRedisTemplate redisTemplate;
+    private final Duration cacheTtl;
 
-    // Constructor injection -- the same DI pattern from Checkpoint 1, now injecting
-    // the repository Spring Data JPA generated for you back in Checkpoint 2.
-    public UrlService(UrlRepository urlRepository) {
+    // AtomicLong, not a plain long -- multiple request threads hit these concurrently
+    private final AtomicLong cacheHits = new AtomicLong();
+    private final AtomicLong cacheMisses = new AtomicLong();
+
+    public UrlService(UrlRepository urlRepository,
+                      StringRedisTemplate redisTemplate,
+                      @Value("${app.cache.ttl-seconds:3600}") long ttlSeconds) {
         this.urlRepository = urlRepository;
+        this.redisTemplate = redisTemplate;
+        this.cacheTtl = Duration.ofSeconds(ttlSeconds);
     }
 
-    @Transactional // both saves below succeed together or roll back together -- no half-written row
+    @Transactional
     public Url createShortUrl(String originalUrl) {
-        // The chicken-and-egg problem from Phase 2: we want the id as the short code,
-        // but the id doesn't exist until after the row is inserted. So: insert with a
-        // placeholder, then update once Postgres hands us the real id.
-        // (Checkpoint 4 keeps this exact two-step shape -- it just replaces
-        // String.valueOf(id) with a Base62-encoded version of the same id.)
         Url url = new Url("PENDING", originalUrl);
-        Url saved = urlRepository.save(url);              // INSERT -- id generated here
-
-        saved.setShortCode(Base62Encoder.encode(saved.getId()));  // <-- was String.valueOf(saved.getId())
-        return urlRepository.save(saved);                  // UPDATE -- short_code now set
+        Url saved = urlRepository.save(url);
+        saved.setShortCode(Base62Encoder.encode(saved.getId()));
+        return urlRepository.save(saved);
     }
 
-    public Url getByShortCode(String shortCode) {
-        return urlRepository.findByShortCode(shortCode)
+    // Cache-aside, written by hand: check Redis first; only a miss touches
+    // Postgres, and every miss warms the cache before returning.
+    public String resolveOriginalUrl(String shortCode) {
+        String cacheKey = CACHE_KEY_PREFIX + shortCode;
+        String cached = redisTemplate.opsForValue().get(cacheKey);
+
+        if (cached != null) {
+            cacheHits.incrementAndGet();
+            return cached;                          // Postgres never touched on a hit
+        }
+
+        cacheMisses.incrementAndGet();
+        Url url = urlRepository.findByShortCode(shortCode)
                 .orElseThrow(() -> new UrlNotFoundException(shortCode));
+
+        redisTemplate.opsForValue().set(cacheKey, url.getOriginalUrl(), cacheTtl);
+        return url.getOriginalUrl();
     }
+
+    public long getCacheHits() { return cacheHits.get(); }
+    public long getCacheMisses() { return cacheMisses.get(); }
 }

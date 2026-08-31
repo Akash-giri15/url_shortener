@@ -39,10 +39,9 @@ public class UrlController {
 
     @GetMapping("/{shortCode}")
     public ResponseEntity<Void> redirect(@PathVariable String shortCode) {
-        Url url = urlService.getByShortCode(shortCode); // throws -> handled -> clean 404 if missing
-
-        return ResponseEntity.status(HttpStatus.FOUND)     // 302, not 301 -- see Phase 2
-                .location(URI.create(url.getOriginalUrl()))
+        String originalUrl = urlService.resolveOriginalUrl(shortCode); // cache-aside happens here
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(URI.create(originalUrl))
                 .build();
     }
 }

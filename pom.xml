@@ -44,7 +44,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-            <version>4.2.0-M1</version>
         </dependency>
 
         <dependency>
@@ -72,6 +71,26 @@
             <!-- brings in Hibernate Validator, the reference implementation of
                  Jakarta Bean Validation - this is what makes @NotBlank and @Valid work -->
         </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+            <!-- pulls in Lettuce as the client automatically  Spring Boot's default
+                 Redis client since Boot 2.x, matching this checkpoint's learning curve -->
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-resttestclient</artifactId>
+            <scope>test</scope>
+            <!-- TestRestTemplate lives here now in Spring Boot 4 - spring-boot-starter-test
+                 no longer pulls it in transitively -->
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>
