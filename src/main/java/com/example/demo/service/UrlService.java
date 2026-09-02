@@ -1,5 +1,3 @@
-
-
 package com.example.demo.service;
 
 import com.example.demo.exception.UrlNotFoundException;
@@ -12,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class UrlService {
@@ -23,13 +23,18 @@ public class UrlService {
     private final StringRedisTemplate redisTemplate;
     private final Duration cacheTtl;
 
-    // AtomicLong, not a plain long -- multiple request threads hit these concurrently
     private final AtomicLong cacheHits = new AtomicLong();
     private final AtomicLong cacheMisses = new AtomicLong();
 
+    // One lock per short code, created on first use. ReentrantLock, not
+    // synchronized -- synchronized would pin the calling virtual thread to
+    // its OS carrier thread for as long as the lock is held (see Phase 2),
+    // which defeats the entire point of virtual threads on this blocking I/O path.
+    private final ConcurrentHashMap<String, ReentrantLock> keyLocks = new ConcurrentHashMap<>();
+
     public UrlService(UrlRepository urlRepository,
                       StringRedisTemplate redisTemplate,
-                      @Value("${app.cache.ttl-seconds:3600}") long ttlSeconds) {
+                      @Value("${app.cache.ttl-seconds}") long ttlSeconds) {
         this.urlRepository = urlRepository;
         this.redisTemplate = redisTemplate;
         this.cacheTtl = Duration.ofSeconds(ttlSeconds);
@@ -43,23 +48,37 @@ public class UrlService {
         return urlRepository.save(saved);
     }
 
-    // Cache-aside, written by hand: check Redis first; only a miss touches
-    // Postgres, and every miss warms the cache before returning.
     public String resolveOriginalUrl(String shortCode) {
         String cacheKey = CACHE_KEY_PREFIX + shortCode;
         String cached = redisTemplate.opsForValue().get(cacheKey);
-
         if (cached != null) {
             cacheHits.incrementAndGet();
-            return cached;                          // Postgres never touched on a hit
+            return cached;
         }
 
-        cacheMisses.incrementAndGet();
-        Url url = urlRepository.findByShortCode(shortCode)
-                .orElseThrow(() -> new UrlNotFoundException(shortCode));
+        // Cache miss: only the FIRST concurrent request for THIS key should
+        // reach Postgres. Everyone else waits here, briefly, instead of
+        // independently racing to the database.
+        ReentrantLock lock = keyLocks.computeIfAbsent(shortCode, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            // Double-check: while we were waiting for the lock, the request
+            // that got there first may have already warmed the cache.
+            cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                cacheHits.incrementAndGet();
+                return cached;
+            }
 
-        redisTemplate.opsForValue().set(cacheKey, url.getOriginalUrl(), cacheTtl);
-        return url.getOriginalUrl();
+            cacheMisses.incrementAndGet();   // only the true winner increments this
+            Url url = urlRepository.findByShortCode(shortCode)
+                    .orElseThrow(() -> new UrlNotFoundException(shortCode));
+
+            redisTemplate.opsForValue().set(cacheKey, url.getOriginalUrl(), cacheTtl);
+            return url.getOriginalUrl();
+        } finally {
+            lock.unlock();
+        }
     }
 
     public long getCacheHits() { return cacheHits.get(); }
